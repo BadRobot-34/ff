@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamPulse - Reproductor M3U8 Moderno</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0b0f19',
+                        cardBg: 'rgba(17, 24, 39, 0.75)',
+                        accent: '#6366f1',
+                        accentHover: '#4f46e5'
+                    },
+                    backdropBlur: {
+                        xs: '2px',
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+/* ... existing code ... -->
+        .glow-effect {
+            animation: pulseGlow 6s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white relative">
+
+    <div class="absolute top-0 left-1/4 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none glow-effect"></div>
+    <div class="absolute top-1/3 right-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none glow-effect" style="animation-delay: 2s;"></div>
+
+    <header class="w-full border-b border-white/10 glass-panel sticky top-0 z-50 px-4 lg:px-8 py-3.5 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                <i data-lucide="play" class="w-5 h-5 text-white fill-white"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent">StreamPulse</h1>
+                <p class="text-xs text-gray-400 font-medium hidden sm:block">Reproductor HLS & M3U8 de Alta Definición</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <button id="toggleSidebarBtn" class="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-medium transition-all duration-200 cursor-pointer">
+                <i data-lucide="list-video" class="w-4 h-4 text-indigo-400"></i>
+                <span class="hidden md:inline">Canales e Historial</span>
+            </button>
+            <a href="https://github.com" target="_blank" rel="noopener noreferrer" class="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white transition-all duration-200">
+                <i data-lucide="github" class="w-4 h-4"></i>
+            </a>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-6 flex flex-col lg:flex-row gap-6 items-start relative z-10">
+        
+        <div class="flex-1 w-full flex flex-col space-y-4">
+            
+            <div class="glass-panel p-3 rounded-2xl shadow-xl flex flex-col sm:flex-row gap-3">
+                <div class="relative flex-1">
+                    <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                        <i data-lucide="link" class="w-4 h-4 text-gray-400"></i>
+                    </div>
+                    <input type="url" id="streamUrlInput" placeholder="Pega tu enlace M3U8 o .ts aquí..." class="w-full pl-10 pr-4 py-3 bg-black/30 border border-white/10 rounded-xl text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-gray-200 placeholder-gray-500">
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="loadStreamBtn" class="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 transition-all transform active:scale-95 cursor-pointer">
+                        <i data-lucide="play-circle" class="w-4 h-4"></i>
+                        <span>Reproducir</span>
+                    </button>
+                    <button id="clearStreamBtn" title="Limpiar" class="p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-gray-300 hover:text-white transition-all cursor-pointer">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10 group select-none flex items-center justify-center" id="playerContainer">
+                
+                <!-- Video Element -->
+                <video id="videoElement" class="w-full h-full object-contain cursor-pointer" playsinline></video>
+
+                <!-- Loading Spinner Overlay -->
+                <div id="loadingOverlay" class="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center space-y-3 transition-opacity duration-300 pointer-events-none opacity-0">
+                    <div class="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+                    <p class="text-xs font-medium text-gray-300 tracking-wider uppercase">Cargando transmision...</p>
+                </div>
+
+                <!-- Error State Overlay -->
+                <div id="errorOverlay" class="absolute inset-0 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center transition-opacity duration-300 hidden z-20">
+                    <div class="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-3">
+                        <i data-lucide="alert-triangle" class="w-8 h-8 text-rose-500"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white mb-1">Error de Reproducción</h3>
+                    <p id="errorMessage" class="text-sm text-gray-400 max-w-md mb-4">No se pudo cargar el stream. Comprueba que el enlace sea válido y esté activo.</p>
+                    <button id="retryBtn" class="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-xl border border-white/10 transition-all cursor-pointer">
+                        Reintentar
+                    </button>
+                </div>
+
+                <!-- Big Center Play/Pause Touch Indicator Animation -->
+                <div id="centerPlayIndicator" class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-300">
+                    <div id="centerPlayIconBg" class="w-16 h-16 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white scale-75 transition-transform duration-300">
+                        <i data-lucide="play" class="w-8 h-8 fill-white ml-1"></i>
+                    </div>
+                </div>
+
+                <!-- Custom Controls Bar (Netflix / Apple TV Style) -->
+                <div id="controlsBar" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent pt-12 pb-3 px-4 flex flex-col justify-end opacity-0 transition-opacity duration-300 group-hover:opacity-100 z-30">
+                    
+                    <!-- Progress Bar -->
+                    <div class="relative w-full h-1.5 bg-white/20 rounded-full mb-3 cursor-pointer group/progress flex items-center" id="progressBarContainer">
+                        <div id="bufferBar" class="absolute h-full bg-white/40 rounded-full w-0 pointer-events-none"></div>
+                        <div id="playedBar" class="absolute h-full bg-indigo-500 rounded-full w-0 pointer-events-none"></div>
+                        <input type="range" id="seekSlider" min="0" max="100" value="0" step="0.1" class="absolute inset-0 w-full opacity-0 cursor-pointer">
+                        <div id="progressThumb" class="absolute w-3 h-3 bg-white rounded-full shadow-md scale-0 group-hover/progress:scale-100 transition-transform pointer-events-none -ml-1.5"></div>
+                    </div>
+
+                    <!-- Controls Row -->
+                    <div class="flex items-center justify-between text-white">
+                        <!-- Left controls -->
+                        <div class="flex items-center space-x-3 sm:space-x-4">
+                            <button id="playPauseBtn" class="p-1 hover:text-indigo-400 transition-colors cursor-pointer" title="Reproducir / Pausa">
+                                <i data-lucide="play" class="w-6 h-6 fill-white" id="playPauseIcon"></i>
+                            </button>
+                            
+                            <div class="flex items-center space-x-2 group/volume relative">
+                                <button id="muteBtn" class="p-1 hover:text-indigo-400 transition-colors cursor-pointer" title="Silenciar">
+                                    <i data-lucide="volume-2" class="w-5 h-5" id="volumeIcon"></i>
+                                </button>
+                                <div class="w-0 overflow-hidden group-hover/volume:w-24 transition-all duration-300 flex items-center">
+                                    <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="1" class="w-20 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer">
+                                </div>
+                            </div>
+
+                            <div class="text-xs font-medium text-gray-300 flex items-center space-x-1 select-none">
+                                <span id="currentTime">00:00</span>
+                                <span class="text-gray-500">/</span>
+                                <span id="durationTime" class="text-gray-400">EN VIVO</span>
+                            </div>
+                        </div>
+
+                        <!-- Right controls -->
+                        <div class="flex items-center space-x-2 sm:space-x-4">
+                            <!-- Stream Live Badge -->
+                            <div id="liveBadge" class="hidden items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs font-semibold">
+                                <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                                <span>LIVE</span>
+                            </div>
+
+                            <!-- Quality Selector Dropdown -->
+                            <div class="relative">
+                                <button id="qualityBtn" class="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium transition-colors flex items-center space-x-1 cursor-pointer">
+                                    <i data-lucide="settings" class="w-3.5 h-3.5 text-indigo-400"></i>
+                                    <span id="currentQualityLabel">Auto</span>
+                                </button>
+                                <div id="qualityMenu" class="absolute bottom-full right-0 mb-2 w-36 glass-dropdown rounded-xl shadow-2xl py-1.5 hidden flex flex-col z-40 border border-white/10 text-xs">
+                                    <div class="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-white/5">Calidad / Resolución</div>
+                                    <div id="qualityOptionsList" class="max-h-40 overflow-y-auto">
+                                        <!-- Dynamically injected quality options -->
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Picture in Picture -->
+                            <button id="pipBtn" class="p-1 hover:text-indigo-400 transition-colors cursor-pointer hidden sm:block" title="Picture in Picture">
+                                <i data-lucide="pip" class="w-5 h-5"></i>
+                            </button>
+
+                            <!-- Fullscreen -->
+                            <button id="fullscreenBtn" class="p-1 hover:text-indigo-400 transition-colors cursor-pointer" title="Pantalla completa">
+                                <i data-lucide="maximize" class="w-5 h-5" id="fullscreenIcon"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="glass-panel p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div class="flex items-center space-x-3">
+                    <div class="w-3 h-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50" id="connectionDot"></div>
+                    <div>
+                        <h4 id="currentStreamTitle" class="text-sm font-semibold text-white">Big Buck Bunny (HLS Preconfigurado)</h4>
+                        <p id="currentStreamUrlDisplay" class="text-xs text-gray-400 truncate max-w-xs sm:max-w-md">https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                    <button id="copyUrlBtn" class="px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-medium text-gray-300 hover:text-white transition-all flex items-center space-x-1.5 cursor-pointer">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                        <span>Copiar Enlace</span>
+                    </button>
+                    <button id="reloadStreamBtn" class="px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-medium text-gray-300 hover:text-white transition-all flex items-center space-x-1.5 cursor-pointer">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        <span>Recargar Stream</span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <aside id="sidebar" class="w-full lg:w-80 glass-panel rounded-2xl p-4 flex flex-col space-y-4 shrink-0 transition-all duration-300">
+            
+            <!-- Sidebar Tabs -->
+            <div class="flex items-center bg-black/40 p-1 rounded-xl border border-white/5">
+                <button id="tabChannelsBtn" class="flex-1 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white transition-all shadow-sm cursor-pointer flex items-center justify-center space-x-1.5">
+                    <i data-lucide="tv" class="w-3.5 h-3.5"></i>
+                    <span>Canales de Prueba</span>
+                </button>
+                <button id="tabHistoryBtn" class="flex-1 py-2 text-xs font-semibold rounded-lg text-gray-400 hover:text-white transition-all cursor-pointer flex items-center justify-center space-x-1.5">
+                    <i data-lucide="history" class="w-3.5 h-3.5"></i>
+                    <span>Historial (<span id="historyCount">0</span>)</span>
+                </button>
+            </div>
+
+            <!-- Channels View -->
+            <div id="channelsView" class="flex flex-col space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
+                <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-1">Streams HLS Públicos Validados</div>
+                
+                <!-- Channel Item 1 -->
+                <div class="channel-card group p-2.5 rounded-xl bg-white/5 hover:bg-indigo-600/15 border border-white/5 hover:border-indigo-500/30 transition-all duration-200 cursor-pointer flex items-center space-x-3" data-url="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" data-title="Big Buck Bunny (HLS Test)">
+                    <div class="w-10 h-10 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform shrink-0">
+                        <i data-lucide="video" class="w-5 h-5"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h5 class="text-xs font-semibold text-white truncate group-hover:text-indigo-300 transition-colors">Big Buck Bunny</h5>
+                        <p class="text-[11px] text-gray-400 truncate">Mux Official Test Stream</p>
+                    </div>
+                    <span class="px-2 py-0.5 rounded text-[10px] bg-indigo-500/20 text-indigo-300 font-medium shrink-0">1080p</span>
+                </div>
+
+                <!-- Channel Item 2 -->
+                <div class="channel-card group p-2.5 rounded-xl bg-white/5 hover:bg-indigo-600/15 border border-white/5 hover:border-indigo-500/30 transition-all duration-200 cursor-pointer flex items-center space-x-3" data-url="https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_adv_example_hevc/master.m3u8" data-title="Apple BipBop Advanced HLS">
+                    <div class="w-10 h-10 rounded-lg bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform shrink-0">
+                        <i data-lucide="apple" class="w-5 h-5"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h5 class="text-xs font-semibold text-white truncate group-hover:text-indigo-300 transition-colors">Apple BipBop HEVC</h5>
+                        <p class="text-[11px] text-gray-400 truncate">Advanced Multi-bitrate Stream</p>
+                    </div>
+                    <span class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 font-medium shrink-0">HEVC</span>
+                </div>
+
+                <!-- Channel Item 3 -->
+                <div class="channel-card group p-2.5 rounded-xl bg-white/5 hover:bg-indigo-600/15 border border-white/5 hover:border-indigo-500/30 transition-all duration-200 cursor-pointer flex items-center space-x-3" data-url="https://cph-p2p-ms.akamaized.net/hls/live/2000341/test/master.m3u8" data-title="Akamai Live Test Stream">
+                    <div class="w-10 h-10 rounded-lg bg-amber-600/20 border border-amber-500/30 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform shrink-0">
+                        <i data-lucide="radio" class="w-5 h-5"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h5 class="text-xs font-semibold text-white truncate group-hover:text-indigo-300 transition-colors">Akamai Live Test</h5>
+                        <p class="text-[11px] text-gray-400 truncate">Live Akamai Stream</p>
+                    </div>
+                    <span class="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 font-medium shrink-0">LIVE</span>
+                </div>
+
+                <!-- Channel Item 4 -->
+                <div class="channel-card group p-2.5 rounded-xl bg-white/5 hover:bg-indigo-600/15 border border-white/5 hover:border-indigo-500/30 transition-all duration-200 cursor-pointer flex items-center space-x-3" data-url="https://test-streams.mux.dev/pts_shift/master.m3u8" data-title="Mux PTS Shift Test">
+                    <div class="w-10 h-10 rounded-lg bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400 group-hover:scale-105 transition-transform shrink-0">
+                        <i data-lucide="sliders" class="w-5 h-5"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h5 class="text-xs font-semibold text-white truncate group-hover:text-indigo-300 transition-colors">Mux PTS Shift</h5>
+                        <p class="text-[11px] text-gray-400 truncate">Advanced Sync Test</p>
+                    </div>
+                    <span class="px-2 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 font-medium shrink-0">Test</span>
+                </div>
+
+                <!-- Channel Item 5 -->
+                <div class="channel-card group p-2.5 rounded-xl bg-white/5 hover:bg-indigo-600/15 border border-white/5 hover:border-indigo-500/30 transition-all duration-200 cursor-pointer flex items-center space-x-3" data-url="https://shls-apple-vh.akamaihd.net/i/news/us/lead_story_1_720p.smil/master.m3u8" data-title="Apple News US Feed">
+                    <div class="w-10 h-10 rounded-lg bg-rose-600/20 border border-rose-500/30 flex items-center justify-center text-rose-400 group-hover:scale-105 transition-transform shrink-0">
+                        <i data-lucide="globe" class="w-5 h-5"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h5 class="text-xs font-semibold text-white truncate group-hover:text-indigo-300 transition-colors">Apple News US</h5>
+                        <p class="text-[11px] text-gray-400 truncate">720p News Feed</p>
+                    </div>
+                    <span class="px-2 py-0.5 rounded text-[10px] bg-rose-500/20 text-rose-300 font-medium shrink-0">720p</span>
+                </div>
+            </div>
+
+            <!-- History View (Hidden by default) -->
+            <div id="historyView" class="hidden flex flex-col space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
+                <div class="flex items-center justify-between px-1">
+                    <span class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Enlaces Recientes</span>
+                    <button id="clearHistoryBtn" class="text-[11px] text-rose-400 hover:text-rose-300 transition-colors cursor-pointer">Limpiar todo</button>
+                </div>
+                <div id="historyListContainer" class="space-y-2">
+                    <div id="emptyHistory" class="text-center py-8 text-xs text-gray-500">
+                        No hay enlaces recientes en el historial.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom M3U8 Info Tip -->
+            <div class="p-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl">
+                <div class="flex items-start space-x-2.5">
+                    <i data-lucide="info" class="w-4 h-4 text-indigo-400 shrink-0 mt-0.5"></i>
+                    <p class="text-[11px] text-gray-300 leading-relaxed">
+                        Puedes pegar cualquier enlace directo con extensión <strong class="text-indigo-300">.m3u8</strong> o manifiesto HLS compatible con CORS.
+                    </p>
+                </div>
+            </div>
+
+        </aside>
+
+    </main>
+
+    <footer class="w-full border-t border-white/10 glass-panel py-4 px-6 text-center text-xs text-gray-400 relative z-10">
+        <p>StreamPulse M3U8 Player &bull; Desarrollado con HLS.js y Tailwind CSS</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize Lucide Icons
+            lucide.createIcons();
+
+            // DOM Elements
+            const video = document.getElementById('videoElement');
+            const streamUrlInput = document.getElementById('streamUrlInput');
+            const loadStreamBtn = document.getElementById('loadStreamBtn');
+            const clearStreamBtn = document.getElementById('clearStreamBtn');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const errorOverlay = document.getElementById('errorOverlay');
+            const errorMessage = document.getElementById('errorMessage');
+            const retryBtn = document.getElementById('retryBtn');
+            const playPauseBtn = document.getElementById('playPauseBtn');
+            const playPauseIcon = document.getElementById('playPauseIcon');
+            const muteBtn = document.getElementById('muteBtn');
+            const volumeIcon = document.getElementById('volumeIcon');
+            const volumeSlider = document.getElementById('volumeSlider');
+            const currentTimeEl = document.getElementById('currentTime');
+            const durationTimeEl = document.getElementById('durationTime');
+            const seekSlider = document.getElementById('seekSlider');
+            const playedBar = document.getElementById('playedBar');
+            const bufferBar = document.getElementById('bufferBar');
+            const liveBadge = document.getElementById('liveBadge');
+            const qualityBtn = document.getElementById('qualityBtn');
+            const qualityMenu = document.getElementById('qualityMenu');
+            const qualityOptionsList = document.getElementById('qualityOptionsList');
+            const currentQualityLabel = document.getElementById('currentQualityLabel');
+            const pipBtn = document.getElementById('pipBtn');
+            const fullscreenBtn = document.getElementById('fullscreenBtn');
+            const fullscreenIcon = document.getElementById('fullscreenIcon');
+            const playerContainer = document.getElementById('playerContainer');
+            const currentStreamTitle = document.getElementById('currentStreamTitle');
+            const currentStreamUrlDisplay = document.getElementById('currentStreamUrlDisplay');
+            const copyUrlBtn = document.getElementById('copyUrlBtn');
+            const reloadStreamBtn = document.getElementById('reloadStreamBtn');
+            const centerPlayIndicator = document.getElementById('centerPlayIndicator');
+            const centerPlayIconBg = document.getElementById('centerPlayIconBg');
+            
+            // Sidebar Elements
+            const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
+            const sidebar = document.getElementById('sidebar');
+            const tabChannelsBtn = document.getElementById('tabChannelsBtn');
+            const tabHistoryBtn = document.getElementById('tabHistoryBtn');
+            const channelsView = document.getElementById('channelsView');
+            const historyView = document.getElementById('historyView');
+            const historyListContainer = document.getElementById('historyListContainer');
+            const emptyHistory = document.getElementById('emptyHistory');
+            const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+            const historyCount = document.getElementById('historyCount');
+
+            // State variables
+            let hls = null;
+            let currentUrl = '';
+            let currentTitle = '';
+            let history = JSON.parse(localStorage.getItem('streampulse_history') || '[]');
+
+            // Render History on load
+            updateHistoryUI();
+
+            // PRECONFIGURED DEFAULT STREAM LINK
+            const defaultStreamUrl = 'https://bantel-cdn1.iptvperu.tv:1936/btnscrtn/espn3-mux/chunks.m3u8';
+            const defaultStreamTitle = 'Big Buck Bunny (HLS Preconfigurado)';
+
+            // Auto-load default stream on startup
+            loadStream(defaultStreamUrl, defaultStreamTitle);
+
+            // --- HLS & Playback Logic ---
+            function loadStream(url, title = 'Stream Personalizado') {
+                if (!url) return;
+                currentUrl = url.trim();
+                currentTitle = title;
+                streamUrlInput.value = currentUrl;
+                currentStreamTitle.textContent = currentTitle;
+                currentStreamUrlDisplay.textContent = currentUrl;
+
+                // UI states
+                errorOverlay.classList.add('hidden');
+                loadingOverlay.classList.remove('opacity-0', 'pointer-events-none');
+
+                // Add to history
+                addToHistory(currentUrl, currentTitle);
+
+                // Destroy previous HLS instance if active
+                if (hls) {
+                    hls.destroy();
+                    hls = null;
+                }
+
+                if (Hls.isSupported()) {
+                    hls = new Hls({
+                        maxBufferLength: 30,
+                        maxMaxBufferLength: 60,
+                    });
+                    hls.loadSource(currentUrl);
+                    hls.attachMedia(video);
+
+                    hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+                        loadingOverlay.classList.add('opacity-0', 'pointer-events-none');
+                        video.play().catch(e => console.log("Autoplay prevented:", e));
+                        setupQualityOptions(hls.levels);
+                    });
+
+                    hls.on(Hls.Events.ERROR, (event, data) => {
+                        if (data.fatal) {
+                            loadingOverlay.classList.add('opacity-0', 'pointer-events-none');
+                            switch (data.type) {
+                                case Hls.ErrorTypes.NETWORK_ERROR:
+                                    showError("Error de red: No se pudo conectar con el servidor M3U8 o CORS bloqueó la solicitud.");
+                                    try { hls.startLoad(); } catch (e) {}
+                                    break;
+                                case Hls.ErrorTypes.MEDIA_ERROR:
+                                    showError("Error de medio: El formato del stream está corrupto o es incompatible.");
+                                    try { hls.recoverMediaError(); } catch (e) {}
+                                    break;
+                                default:
+                                    showError("Error crítico al reproducir el flujo HLS.");
+                                    hls.destroy();
+                                    break;
+                            }
+                        }
+                    });
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = currentUrl;
+                    video.addEventListener('loadedmetadata', () => {
+                        loadingOverlay.classList.add('opacity-0', 'pointer-events-none');
+                        video.play().catch(e => console.log("Autoplay prevented:", e));
+                    });
+                    video.addEventListener('error', () => {
+                        loadingOverlay.classList.add('opacity-0', 'pointer-events-none');
+                        showError("Error al reproducir en reproductor nativo Safari.");
+                    });
+                } else {
+                    loadingOverlay.classList.add('opacity-0', 'pointer-events-none');
+                    showError("Tu navegador no soporta transmisiones HLS (.m3u8).");
+                }
+            }
+
+            function showError(msg) {
+                errorMessage.textContent = msg;
+                errorOverlay.classList.remove('hidden');
+            }
+
+            function setupQualityOptions(levels) {
+                qualityOptionsList.innerHTML = '';
+                if (!levels || levels.length <= 1) {
+                    qualityBtn.classList.add('hidden');
+                    return;
+                }
+                qualityBtn.classList.remove('hidden');
+
+                const autoOption = document.createElement('div');
+                autoOption.className = 'px-3 py-2 hover:bg-white/10 cursor-pointer text-white flex items-center justify-between transition-colors';
+                autoOption.innerHTML = `<span>Automático</span> <span class="text-[10px] text-indigo-400 font-bold">AUTO</span>`;
+                autoOption.onclick = () => {
+                    hls.currentLevel = -1;
+                    currentQualityLabel.textContent = 'Auto';
+                    qualityMenu.classList.add('hidden');
+                };
+                qualityOptionsList.appendChild(autoOption);
+
+                levels.forEach((level, index) => {
+                    const opt = document.createElement('div');
+                    opt.className = 'px-3 py-2 hover:bg-white/10 cursor-pointer text-gray-300 hover:text-white flex items-center justify-between transition-colors';
+                    opt.innerHTML = `<span>${level.height ? level.height + 'p' : 'Calidad ' + (index + 1)}</span> <span class="text-[10px] text-gray-500">${Math.round(level.bitrate / 1000)} kbps</span>`;
+                    opt.onclick = () => {
+                        hls.currentLevel = index;
+                        currentQualityLabel.textContent = level.height ? level.height + 'p' : `Calidad ${index + 1}`;
+                        qualityMenu.classList.add('hidden');
+                    };
+                    qualityOptionsList.appendChild(opt);
+                });
+            }
+
+            // --- Custom Player Controls ---
+            function togglePlay() {
+                if (video.paused) {
+                    video.play();
+                    playPauseIcon.setAttribute('data-lucide', 'pause');
+                    showCenterIndicator('play');
+                } else {
+                    video.pause();
+                    playPauseIcon.setAttribute('data-lucide', 'play');
+                    showCenterIndicator('pause');
+                }
+                lucide.createIcons();
+            }
+
+            function showCenterIndicator(type) {
+                centerPlayIconBg.innerHTML = type === 'play' 
+                    ? '<i data-lucide="play" class="w-8 h-8 fill-white ml-1"></i>' 
+                    : '<i data-lucide="pause" class="w-8 h-8 fill-white"></i>';
+                lucide.createIcons();
+                centerPlayIndicator.classList.remove('opacity-0');
+                centerPlayIconBg.classList.remove('scale-75');
+                centerPlayIconBg.classList.add('scale-100');
+                setTimeout(() => {
+                    centerPlayIndicator.classList.add('opacity-0');
+                    centerPlayIconBg.classList.remove('scale-100');
+                    centerPlayIconBg.classList.add('scale-75');
+                }, 500);
+            }
+
+            playPauseBtn.addEventListener('click', togglePlay);
+            video.addEventListener('click', togglePlay);
+
+            video.addEventListener('play', () => {
+                playPauseIcon.setAttribute('data-lucide', 'pause');
+                lucide.createIcons();
+            });
+
+            video.addEventListener('pause', () => {
+                playPauseIcon.setAttribute('data-lucide', 'play');
+                lucide.createIcons();
+            });
+
+            muteBtn.addEventListener('click', () => {
+                video.muted = !video.muted;
+                if (video.muted) {
+                    volumeIcon.setAttribute('data-lucide', 'volume-x');
+                    volumeSlider.value = 0;
+                } else {
+                    volumeIcon.setAttribute('data-lucide', 'volume-2');
+                    volumeSlider.value = video.volume;
+                }
+                lucide.createIcons();
+            });
+
+            volumeSlider.addEventListener('input', (e) => {
+                video.volume = e.target.value;
+                video.muted = (video.volume == 0);
+                if (video.muted) {
+                    volumeIcon.setAttribute('data-lucide', 'volume-x');
+                } else if (video.volume < 0.5) {
+                    volumeIcon.setAttribute('data-lucide', 'volume-1');
+                } else {
+                    volumeIcon.setAttribute('data-lucide', 'volume-2');
+                }
+                lucide.createIcons();
+            });
+
+            video.addEventListener('timeupdate', () => {
+                if (!isNaN(video.duration) && video.duration > 0) {
+                    const percent = (video.currentTime / video.duration) * 100;
+                    seekSlider.value = percent;
+                    playedBar.style.width = percent + '%';
+                    currentTimeEl.textContent = formatTime(video.currentTime);
+                    durationTimeEl.textContent = formatTime(video.duration);
+                    liveBadge.classList.add('hidden');
+                } else {
+                    currentTimeEl.textContent = formatTime(video.currentTime);
+                    durationTimeEl.textContent = "EN VIVO";
+                    liveBadge.classList.remove('hidden');
+                    liveBadge.classList.add('flex');
+                }
+
+                if (video.buffered.length > 0) {
+                    const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+                    if (!isNaN(video.duration) && video.duration > 0) {
+                        const bufferPercent = (bufferedEnd / video.duration) * 100;
+                        bufferBar.style.width = bufferPercent + '%';
+                    }
+                }
+            });
+
+            seekSlider.addEventListener('input', (e) => {
+                if (!isNaN(video.duration) && video.duration > 0) {
+                    const time = (e.target.value / 100) * video.duration;
+                    video.currentTime = time;
+                }
+            });
+
+            function formatTime(seconds) {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+            }
+
+            qualityBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                qualityMenu.classList.toggle('hidden');
+            });
+            document.addEventListener('click', () => {
+                qualityMenu.classList.add('hidden');
+            });
+
+            pipBtn.addEventListener('click', async () => {
+                try {
+                    if (document.pictureInPictureElement) {
+                        await document.exitPictureInPicture();
+                    } else if (document.pictureInPictureEnabled) {
+                        await video.requestPictureInPicture();
+                    }
+                } catch (e) {
+                    console.error("PiP Error:", e);
+                }
+            });
+
+            fullscreenBtn.addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    playerContainer.requestFullscreen().catch(err => {
+                        console.error("Fullscreen error:", err);
+                    });
+                    fullscreenIcon.setAttribute('data-lucide', 'minimize');
+                } else {
+                    document.exitFullscreen();
+                    fullscreenIcon.setAttribute('data-lucide', 'maximize');
+                }
+                lucide.createIcons();
+            });
+
+            loadStreamBtn.addEventListener('click', () => {
+                const url = streamUrlInput.value.trim();
+                if (url) {
+                    loadStream(url, 'Enlace Personalizado');
+                }
+            });
+
+            streamUrlInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const url = streamUrlInput.value.trim();
+                    if (url) loadStream(url, 'Enlace Personalizado');
+                }
+            });
+
+            clearStreamBtn.addEventListener('click', () => {
+                streamUrlInput.value = '';
+                streamUrlInput.focus();
+            });
+
+            retryBtn.addEventListener('click', () => {
+                if (currentUrl) loadStream(currentUrl, currentTitle);
+            });
+
+            reloadStreamBtn.addEventListener('click', () => {
+                if (currentUrl) loadStream(currentUrl, currentTitle);
+            });
+
+            copyUrlBtn.addEventListener('click', () => {
+                if (!currentUrl) return;
+                const textArea = document.createElement("textarea");
+                textArea.value = currentUrl;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    copyUrlBtn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400"></i><span>¡Copiado!</span>';
+                    lucide.createIcons();
+                    setTimeout(() => {
+                        copyUrlBtn.innerHTML = '<i data-lucide="copy" class="w-3.5 h-3.5"></i><span>Copiar Enlace</span>';
+                        lucide.createIcons();
+                    }, 2000);
+                } catch (err) {
+                    console.error('Failed to copy', err);
+                }
+                document.body.removeChild(textArea);
+            });
+
+            // --- Sidebar, Channels & History Logic ---
+            toggleSidebarBtn.addEventListener('click', () => {
+                sidebar.classList.toggle('hidden');
+            });
+
+            tabChannelsBtn.addEventListener('click', () => {
+                tabChannelsBtn.className = "flex-1 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white transition-all shadow-sm cursor-pointer flex items-center justify-center space-x-1.5";
+                tabHistoryBtn.className = "flex-1 py-2 text-xs font-semibold rounded-lg text-gray-400 hover:text-white transition-all cursor-pointer flex items-center justify-center space-x-1.5";
+                channelsView.classList.remove('hidden');
+                historyView.classList.add('hidden');
+            });
+
+            tabHistoryBtn.addEventListener('click', () => {
+                tabHistoryBtn.className = "flex-1 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white transition-all shadow-sm cursor-pointer flex items-center justify-center space-x-1.5";
+                tabChannelsBtn.className = "flex-1 py-2 text-xs font-semibold rounded-lg text-gray-400 hover:text-white transition-all cursor-pointer flex items-center justify-center space-x-1.5";
+                historyView.classList.remove('hidden');
+                channelsView.classList.add('hidden');
+            });
+
+            document.querySelectorAll('.channel-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    const url = card.getAttribute('data-url');
+                    const title = card.getAttribute('data-title');
+                    loadStream(url, title);
+                    if (window.innerWidth < 1024) {
+                        sidebar.classList.add('hidden');
+                    }
+                });
+            });
+
+            function addToHistory(url, title) {
+                history = history.filter(item => item.url !== url);
+                history.unshift({ url, title, date: new Date().toLocaleDateString() });
+                if (history.length > 20) history.pop();
+                localStorage.setItem('streampulse_history', JSON.stringify(history));
+                updateHistoryUI();
+            }
+
+            function updateHistoryUI() {
+                historyCount.textContent = history.length;
+                if (history.length === 0) {
+                    emptyHistory.classList.remove('hidden');
+                    historyListContainer.innerHTML = '';
+                    historyListContainer.appendChild(emptyHistory);
+                    return;
+                }
+                emptyHistory.classList.add('hidden');
+                historyListContainer.innerHTML = '';
+
+                history.forEach((item, index) => {
+                    const div = document.createElement('div');
+                    div.className = "group p-2.5 rounded-xl bg-white/5 hover:bg-indigo-600/15 border border-white/5 hover:border-indigo-500/30 transition-all duration-200 cursor-pointer flex items-center justify-between space-x-2";
+                    div.innerHTML = `
+                        <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+                            <div class="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                                <i data-lucide="play" class="w-3.5 h-3.5 fill-indigo-400"></i>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <h6 class="text-xs font-semibold text-white truncate group-hover:text-indigo-300 transition-colors">${item.title}</h6>
+                                <p class="text-[10px] text-gray-400 truncate">${item.url}</p>
+                            </div>
+                        </div>
+                        <button class="text-gray-500 hover:text-rose-400 p-1 transition-colors delete-history-item" data-index="${index}" title="Eliminar">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                    `;
+                    div.addEventListener('click', (e) => {
+                        if (e.target.closest('.delete-history-item')) return;
+                        loadStream(item.url, item.title);
+                        if (window.innerWidth < 1024) {
+                            sidebar.classList.add('hidden');
+                        }
+                    });
+                    historyListContainer.appendChild(div);
+                });
+
+                document.querySelectorAll('.delete-history-item').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const idx = parseInt(btn.getAttribute('data-index'));
+                        history.splice(idx, 1);
+                        localStorage.setItem('streampulse_history', JSON.stringify(history));
+                        updateHistoryUI();
+                    });
+                });
+
+                lucide.createIcons();
+            }
+
+            clearHistoryBtn.addEventListener('click', () => {
+                history = [];
+                localStorage.removeItem('streampulse_history');
+                updateHistoryUI();
+            });
+
+        });
+    </script>
+</body>
+</html>
